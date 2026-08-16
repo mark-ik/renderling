@@ -51,7 +51,7 @@ fn create_pipeline(
         }),
         depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -87,8 +87,8 @@ impl MipMapGenerator {
         });
         let pp_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: LABEL,
-            bind_group_layouts: &[&bg_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bg_layout)],
+            immediate_size: 0,
         });
         let pipeline = create_pipeline(device, format, &pp_layout);
         Self {

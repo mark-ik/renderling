@@ -11,7 +11,6 @@ use crate::atlas::shader::{AtlasDescriptor, AtlasTextureDescriptor};
 
 pub mod shader;
 
-
 /// Identifies what kind of UI element is being rendered.
 ///
 /// Used by the fragment shader to select the appropriate SDF / sampling logic.

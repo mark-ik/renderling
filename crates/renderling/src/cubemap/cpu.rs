@@ -218,8 +218,8 @@ impl EquirectangularImageToCubemapBlitter {
         let bg_layout = Self::create_bindgroup_layout(device);
         let pp_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("cubemap-making pipeline layout"),
-            bind_group_layouts: &[&bg_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bg_layout)],
+            immediate_size: 0,
         });
         EquirectangularImageToCubemapBlitter(device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
@@ -256,7 +256,7 @@ impl EquirectangularImageToCubemapBlitter {
                     })],
                     compilation_options: Default::default(),
                 }),
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             },
         ))
@@ -362,8 +362,8 @@ mod test {
             ctx.get_device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label,
-                    bind_group_layouts: &[&bind_group_layout],
-                    push_constant_ranges: &[],
+                    bind_group_layouts: &[Some(&bind_group_layout)],
+                    immediate_size: 0,
                 });
         let vertex = crate::linkage::cubemap_sampling_test_vertex::linkage(ctx.get_device());
         let fragment = crate::linkage::cubemap_sampling_test_fragment::linkage(ctx.get_device());
@@ -399,7 +399,7 @@ mod test {
                             write_mask: wgpu::ColorWrites::all(),
                         })],
                     }),
-                    multiview: None,
+                    multiview_mask: None,
                     cache: None,
                 });
 
@@ -478,6 +478,7 @@ mod test {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 render_pass.set_pipeline(&cubemap_sampling_pipeline);
                 render_pass.set_bind_group(0, &bind_group, &[]);
@@ -485,7 +486,10 @@ mod test {
             }
             let submission_index = ctx.get_queue().submit(Some(encoder.finish()));
             ctx.get_device()
-                .poll(wgpu::PollType::WaitForSubmissionIndex(submission_index))
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(submission_index),
+                    timeout: None,
+                })
                 .unwrap();
 
             let img = Texture::read(&ctx, &render_target, 1, 1, 4, 1)

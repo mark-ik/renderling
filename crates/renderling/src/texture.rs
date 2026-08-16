@@ -195,7 +195,7 @@ impl Texture {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             label,
             ..Default::default()
         });
@@ -271,7 +271,7 @@ impl Texture {
                 address_mode_w: wgpu::AddressMode::ClampToEdge,
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
-                mipmap_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
                 ..Default::default()
             })
         });
@@ -486,7 +486,7 @@ impl Texture {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
         let sampler = Arc::new(device.create_sampler(&sampler_descriptor));
@@ -534,7 +534,7 @@ impl Texture {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             compare: Some(wgpu::CompareFunction::LessEqual),
             lod_min_clamp: 0.0,
             lod_max_clamp: 100.0,
@@ -583,7 +583,7 @@ impl Texture {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             compare: Some(wgpu::CompareFunction::LessEqual),
             lod_min_clamp: 0.0,
             lod_max_clamp: 100.0,
@@ -706,7 +706,7 @@ impl Texture {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         }));
         let view = Arc::new(texture.create_view(&wgpu::TextureViewDescriptor::default()));
@@ -947,7 +947,13 @@ impl std::future::Future for MappedBuffer<'_> {
         let this = self.deref();
         if let Some(result) = this.result.lock().expect("texture result lock").take() {
             std::task::Poll::Ready(result.map(|()| {
-                let padded_buffer = this.buffer_slice.get_mapped_range();
+                // wgpu 30 made this fallible. `result` being Ok means map_async
+                // already succeeded, so a failure here is a logic error, and the
+                // Future's error type is BufferAsyncError which cannot carry it.
+                let padded_buffer = this
+                    .buffer_slice
+                    .get_mapped_range()
+                    .expect("get_mapped_range after a successful map_async");
                 let mut unpadded_buffer = vec![];
                 // from the padded_buffer we write just the unpadded bytes into the
                 // unpadded_buffer
@@ -1002,7 +1008,9 @@ impl CopiedTextureBuffer {
     /// This calls `wgpu::Device::poll`.
     pub async fn pixels(&self, device: &wgpu::Device) -> Result<Vec<u8>> {
         let buffer = self.get_mapped_buffer();
-        device.poll(wgpu::PollType::Wait).context(PollSnafu)?;
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .context(PollSnafu)?;
         buffer.await.context(BufferAsyncSnafu)
     }
 

@@ -55,8 +55,8 @@ impl Compositor {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("compositor"),
-            bind_group_layouts: &[&bindgroup_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bindgroup_layout)],
+            immediate_size: 0,
         });
 
         let vertex = crate::linkage::compositor_vertex::linkage(device);
@@ -92,7 +92,7 @@ impl Compositor {
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -149,6 +149,7 @@ impl Compositor {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             pass.set_pipeline(&self.pipeline);

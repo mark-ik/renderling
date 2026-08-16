@@ -48,8 +48,8 @@ impl DebugOverlay {
     ) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Self::LABEL,
-            bind_group_layouts: &[bindgroup_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(bindgroup_layout)],
+            immediate_size: 0,
         })
     }
 
@@ -91,7 +91,7 @@ impl DebugOverlay {
                     write_mask: wgpu::ColorWrites::all(),
                 })],
             }),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         })
     }
@@ -154,6 +154,7 @@ impl DebugOverlay {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             render_pass.set_pipeline(&self.pipeline);
             // UNWRAP: panic on purpose

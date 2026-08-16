@@ -26,6 +26,9 @@ pub async fn adapter(
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface,
             force_fallback_adapter: false,
+            // wgpu 30 limit bucketing, off to keep reporting the adapter's
+            // real limits as before.
+            apply_limit_buckets: false,
         })
         .await
         .context(CannotCreateAdaptorSnafu)?;
@@ -46,7 +49,6 @@ pub async fn device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
     let wanted_features = wgpu::Features::INDIRECT_FIRST_INSTANCE
-        | wgpu::Features::MULTI_DRAW_INDIRECT
         //// when debugging rust-gpu shader miscompilation it's nice to have this
         //| wgpu::Features::SPIRV_SHADER_PASSTHROUGH
         // this one is a funny requirement, it seems it is needed if using storage buffers in
@@ -69,6 +71,7 @@ pub async fn device(
             label: None,
             memory_hints: wgpu::MemoryHints::default(),
             trace: wgpu::Trace::Off,
+            experimental_features: Default::default(),
         })
         .await
 }
@@ -84,16 +87,13 @@ pub fn new_instance(backends: Option<wgpu::Backends>) -> wgpu::Instance {
     );
     // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
     let backends = backends.unwrap_or(wgpu::Backends::PRIMARY);
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends,
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
 
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let adapters = instance.enumerate_adapters(backends);
-        log::trace!("available adapters: {adapters:#?}");
-    }
+    // wgpu 29: enumerate_adapters is async; the trace log is not worth
+    // blocking instance creation for.
 
     instance
 }

@@ -118,8 +118,8 @@ impl Tonemapping {
         let hdr_layout = bindgroup_layout(device, label);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label,
-            bind_group_layouts: &[&hdr_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&hdr_layout)],
+            immediate_size: 0,
         });
         let pipeline = Arc::new(
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -152,7 +152,7 @@ impl Tonemapping {
                     compilation_options: Default::default(),
                 }),
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             }),
         );

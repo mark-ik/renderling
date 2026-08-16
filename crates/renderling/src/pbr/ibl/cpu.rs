@@ -210,8 +210,8 @@ pub(crate) fn create_prefiltered_environment_pipeline_and_bindgroup(
     });
     let pp_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label,
-        bind_group_layouts: &[&bg_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bg_layout)],
+        immediate_size: 0,
     });
     let vertex_linkage = crate::linkage::prefilter_environment_cubemap_vertex::linkage(device);
     let fragment_linkage = crate::linkage::prefilter_environment_cubemap_fragment::linkage(device);
@@ -252,7 +252,7 @@ pub(crate) fn create_prefiltered_environment_pipeline_and_bindgroup(
             })],
             compilation_options: Default::default(),
         }),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
     (pipeline, bindgroup)
@@ -418,8 +418,8 @@ impl DiffuseIrradianceConvolutionRenderPipeline {
         let bg_layout = diffuse_irradiance_convolution_bindgroup_layout(device);
         let pp_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("convolution pipeline layout"),
-            bind_group_layouts: &[&bg_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bg_layout)],
+            immediate_size: 0,
         });
 
         DiffuseIrradianceConvolutionRenderPipeline(device.create_render_pipeline(
@@ -457,7 +457,7 @@ impl DiffuseIrradianceConvolutionRenderPipeline {
                     })],
                     compilation_options: Default::default(),
                 }),
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             },
         ))

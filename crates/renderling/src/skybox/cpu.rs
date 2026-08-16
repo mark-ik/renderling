@@ -95,8 +95,8 @@ pub(crate) fn create_skybox_render_pipeline(
     let bg_layout = skybox_bindgroup_layout(device);
     let pp_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("skybox pipeline layout"),
-        bind_group_layouts: &[&bg_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bg_layout)],
+        immediate_size: 0,
     });
     let msaa_sample_count = multisample_count.unwrap_or(1);
     SkyboxRenderPipeline {
@@ -120,8 +120,8 @@ pub(crate) fn create_skybox_render_pipeline(
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
@@ -140,7 +140,7 @@ pub(crate) fn create_skybox_render_pipeline(
                 })],
                 compilation_options: Default::default(),
             }),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         }),
         msaa_sample_count,
@@ -261,7 +261,7 @@ impl Skybox {
             Some(runtime.device.create_sampler(&wgpu::SamplerDescriptor {
                 mag_filter: wgpu::FilterMode::Nearest,
                 min_filter: wgpu::FilterMode::Nearest,
-                mipmap_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::MipmapFilterMode::Nearest,
                 ..Default::default()
             })),
             wgpu::TextureFormat::Rgba32Float,

@@ -123,8 +123,8 @@ impl RenderTarget {
 #[snafu(visibility(pub(crate)))]
 /// Represents errors that can occur within the rendering context.
 pub enum ContextError {
-    #[snafu(display("missing surface texture: {}", source))]
-    Surface { source: wgpu::SurfaceError },
+    #[snafu(display("missing surface texture: {status}"))]
+    Surface { status: String },
 
     #[snafu(display("cannot create adaptor: {source}"))]
     CannotCreateAdaptor { source: wgpu::RequestAdapterError },
@@ -288,7 +288,8 @@ impl Frame {
     /// If the frame is a `TargetFrame::Texture`, this is a no-op.
     pub fn present(self) {
         match self.surface {
-            FrameSurface::Surface(s) => s.present(),
+            // wgpu 30 moved presentation from SurfaceTexture to Queue.
+            FrameSurface::Surface(s) => self.runtime.queue.present(s),
             FrameSurface::Texture(_) => {}
         }
     }
@@ -515,7 +516,16 @@ impl Context {
             runtime: self.runtime.clone(),
             surface: match &self.render_target.0 {
                 RenderTargetInner::Surface { surface, .. } => {
-                    let surface_texture = surface.get_current_texture().context(SurfaceSnafu)?;
+                    let surface_texture = match surface.get_current_texture() {
+                        wgpu::CurrentSurfaceTexture::Success(t)
+                        | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+                        other => {
+                            return SurfaceSnafu {
+                                status: format!("{other:?}"),
+                            }
+                            .fail();
+                        }
+                    };
                     FrameSurface::Surface(surface_texture)
                 }
                 RenderTargetInner::Texture { texture, .. } => {

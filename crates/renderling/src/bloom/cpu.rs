@@ -51,8 +51,8 @@ fn create_bloom_downsample_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeli
     let bindgroup_layout = create_bindgroup_layout(device, label);
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label,
-        bind_group_layouts: &[&bindgroup_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bindgroup_layout)],
+        immediate_size: 0,
     });
     let vertex_module = crate::linkage::bloom_vertex::linkage(device);
     let fragment_module = crate::linkage::bloom_downsample_fragment::linkage(device);
@@ -86,7 +86,7 @@ fn create_bloom_downsample_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeli
             })],
             compilation_options: Default::default(),
         }),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -96,8 +96,8 @@ fn create_bloom_upsample_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline
     let bindgroup_layout = create_bindgroup_layout(device, label);
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label,
-        bind_group_layouts: &[&bindgroup_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bindgroup_layout)],
+        immediate_size: 0,
     });
     let vertex_module = crate::linkage::bloom_vertex::linkage(device);
     let fragment_module = crate::linkage::bloom_upsample_fragment::linkage(device);
@@ -131,7 +131,7 @@ fn create_bloom_upsample_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline
             })],
             compilation_options: Default::default(),
         }),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -158,7 +158,7 @@ fn create_texture(
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
     Texture::new_with(
@@ -301,8 +301,8 @@ fn create_mix_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label,
-        bind_group_layouts: &[&bindgroup_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bindgroup_layout)],
+        immediate_size: 0,
     });
     let vertex_module = crate::linkage::bloom_vertex::linkage(device);
     let fragment_module = crate::linkage::bloom_mix_fragment::linkage(device);
@@ -336,7 +336,7 @@ fn create_mix_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
             })],
             compilation_options: Default::default(),
         }),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -612,6 +612,7 @@ impl Bloom {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 render_pass.set_pipeline(&self.downsample_pipeline);
                 render_pass.set_bind_group(0, Some(bindgroup), &[]);
@@ -659,6 +660,7 @@ impl Bloom {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 render_pass.set_pipeline(&self.upsample_pipeline);
                 render_pass.set_bind_group(0, Some(bindgroup), &[]);
@@ -690,6 +692,7 @@ impl Bloom {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             render_pass.set_pipeline(&self.mix_pipeline);
             render_pass.set_bind_group(0, Some(mix_bindgroup.deref()), &[]);
