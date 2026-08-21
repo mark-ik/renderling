@@ -33,6 +33,7 @@ use crate::{
     texture::{DepthTexture, Texture},
     tonemapping::Tonemapping,
     transform::{NestedTransform, Transform},
+    types::GpuOnlyArray,
 };
 
 /// Enumeration of errors that may be the result of [`Stage`] functions.
@@ -529,6 +530,11 @@ impl Stage {
     /// Stage some vertex geometry data.
     pub fn new_vertices(&self, data: impl IntoIterator<Item = Vertex>) -> Vertices {
         self.geometry.new_vertices(data)
+    }
+
+    /// Allocate contiguous GPU-only vertex capacity for an external writer.
+    pub fn new_gpu_vertices(&self, capacity: usize) -> Vertices<GpuOnlyArray> {
+        self.geometry.new_gpu_vertices(capacity)
     }
 
     /// Stage some vertex index data.

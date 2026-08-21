@@ -136,6 +136,27 @@ where
 }
 
 impl Vertices<GpuOnlyArray> {
+    pub(crate) fn uninitialized(slab: &SlabAllocator<WgpuRuntime>, capacity: usize) -> Self {
+        Self {
+            inner: slab.new_gpu_array(capacity),
+        }
+    }
+
+    /// Return the allocated vertex capacity.
+    pub fn capacity(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Return a draw view bounded to `len` vertices.
+    ///
+    /// This keeps ownership of the full allocation with `self` while letting a
+    /// compacting GPU producer publish a smaller draw count. A count beyond the
+    /// allocation is refused.
+    pub fn bounded_array(&self, len: usize) -> Option<Array<Vertex>> {
+        let array = self.array();
+        (len <= array.len()).then(|| Array::new(array.starting_index() as u32, len as u32))
+    }
+
     /// Set the [`Vertex`] at the given index to the given value, if the item at
     /// the index exists.
     pub fn set_vertex(&self, index: usize, value: &Vertex) {
@@ -406,6 +427,14 @@ impl Geometry {
     /// Stage vertex geometry data on the GPU.
     pub fn new_vertices(&self, vertices: impl IntoIterator<Item = Vertex>) -> Vertices {
         Vertices::new(self.slab_allocator(), vertices)
+    }
+
+    /// Allocate contiguous vertex capacity without staging CPU vertex data.
+    ///
+    /// The range must be filled by an external GPU writer before it is attached
+    /// to a primitive.
+    pub fn new_gpu_vertices(&self, capacity: usize) -> Vertices<GpuOnlyArray> {
+        Vertices::uninitialized(self.slab_allocator(), capacity)
     }
 
     /// Stage indices that point to offsets of an array of vertices.

@@ -16,6 +16,25 @@ use crate::{
     types::GpuOnlyArray,
 };
 
+/// A compacted vertex count exceeded its allocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VertexCountOverflow {
+    pub requested: usize,
+    pub capacity: usize,
+}
+
+impl core::fmt::Display for VertexCountOverflow {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "vertex count {} exceeds capacity {}",
+            self.requested, self.capacity
+        )
+    }
+}
+
+impl std::error::Error for VertexCountOverflow {}
+
 /// A unit of rendering.
 ///
 /// A `Primitive` represents one draw call, or one mesh primitive.
@@ -80,6 +99,23 @@ impl Primitive {
         self.descriptor.modify(|d| d.vertices_array = array);
         *self.vertices.lock().expect("vertices lock") = Some(vertices.clone());
         self
+    }
+
+    /// Set GPU-produced vertex data with an explicit compacted draw count.
+    pub fn set_vertices_with_count(
+        &self,
+        vertices: impl Into<Vertices<GpuOnlyArray>>,
+        count: usize,
+    ) -> Result<&Self, VertexCountOverflow> {
+        let vertices = vertices.into();
+        let capacity = vertices.capacity();
+        let array = vertices.bounded_array(count).ok_or(VertexCountOverflow {
+            requested: count,
+            capacity,
+        })?;
+        self.descriptor.modify(|d| d.vertices_array = array);
+        *self.vertices.lock().expect("vertices lock") = Some(vertices.clone());
+        Ok(self)
     }
 
     /// Set the vertex data of this primitive and return the primitive.
