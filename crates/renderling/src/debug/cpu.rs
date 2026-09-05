@@ -129,16 +129,15 @@ impl DebugOverlay {
         }
     }
 
-    pub fn render(
+    /// Encode the debug overlay into a caller-owned command encoder.
+    pub(crate) fn encode_into(
         &self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         slab_buffer: &wgpu::Buffer,
         indirect_draw_buffer: &wgpu::Buffer,
     ) {
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Self::LABEL });
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Self::LABEL,
@@ -165,6 +164,25 @@ impl DebugOverlay {
             render_pass.set_bind_group(0, guard.as_ref(), &[]);
             render_pass.draw(0..6, 0..1);
         }
+    }
+
+    pub fn render(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        slab_buffer: &wgpu::Buffer,
+        indirect_draw_buffer: &wgpu::Buffer,
+    ) {
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Self::LABEL });
+        self.encode_into(
+            device,
+            &mut encoder,
+            view,
+            slab_buffer,
+            indirect_draw_buffer,
+        );
         queue.submit(Some(encoder.finish()));
     }
 }

@@ -190,13 +190,13 @@ impl Tonemapping {
         self.config.set(config);
     }
 
-    pub fn render(&self, device: &wgpu::Device, queue: &wgpu::Queue, view: &wgpu::TextureView) {
+    /// Encode tonemapping into a caller-owned command encoder.
+    pub(crate) fn encode_into(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let label = Some("tonemapping render");
         assert!(!self.slab.commit().is_new_this_commit());
 
         // UNWRAP: not safe but we want to panic
         let bindgroup = self.bindgroup.read().expect("tonemapping bindgroup read");
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label });
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -216,7 +216,13 @@ impl Tonemapping {
         let id = self.config.id().into();
         render_pass.draw(0..6, id..id + 1);
         drop(render_pass);
+    }
 
+    pub fn render(&self, device: &wgpu::Device, queue: &wgpu::Queue, view: &wgpu::TextureView) {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("tonemapping render"),
+        });
+        self.encode_into(&mut encoder, view);
         queue.submit(std::iter::once(encoder.finish()));
     }
 }

@@ -354,7 +354,7 @@ impl Context {
                 height: w,
                 depth_or_array_layers: 4,
             },
-            use_compute_culling: false,
+            use_compute_culling: true,
         }));
         Self {
             adapter,

@@ -50,6 +50,27 @@ pub enum StageError {
     Gltf { source: crate::gltf::StageGltfError },
 }
 
+/// Why a frame cannot join a caller-owned command encoder.
+#[derive(Debug, Snafu)]
+#[non_exhaustive]
+pub enum StageEncodeError {
+    #[snafu(display(
+        "caller-owned encoding requires direct draws; compute culling currently submits its own \
+         work"
+    ))]
+    ComputeCullingOwnsSubmission,
+}
+
+/// Work recorded by [`Stage::encode_into`] before the caller submits it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[must_use]
+#[non_exhaustive]
+pub struct StageEncodeReport {
+    pub render_passes: u32,
+    pub copy_commands: u32,
+    pub internal_queue_submissions: u32,
+}
+
 impl From<AtlasError> for StageError {
     fn from(source: AtlasError) -> Self {
         Self::Atlas { source }
@@ -238,11 +259,11 @@ pub(crate) struct StageRendering<'a> {
 }
 
 impl StageRendering<'_> {
-    /// Run the stage rendering.
-    ///
-    /// Returns the queue submission index and the indirect draw buffer, if
-    /// available.
-    pub fn run(self) -> (wgpu::SubmissionIndex, Option<SlabBuffer<wgpu::Buffer>>) {
+    /// Encode the stage's geometry and depth pass into a caller-owned encoder.
+    pub fn encode_into(
+        self,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> Option<SlabBuffer<wgpu::Buffer>> {
         let commit_result = self.stage.commit();
         let current_primitive_bind_group_creation_time = commit_result.latest_creation_time();
         log::trace!(
@@ -289,16 +310,10 @@ impl StageRendering<'_> {
 
         let mut draw_calls = self.stage.draw_calls.write().expect("draw_calls write");
         let depth_texture = self.stage.depth_texture.read().expect("depth_texture read");
-        // UNWRAP: safe because we know the depth texture format will always match
         let maybe_indirect_buffer = draw_calls.pre_draw(&depth_texture).unwrap();
 
         log::trace!("rendering");
         let label = Some("stage render");
-
-        let mut encoder = self
-            .stage
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label });
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label,
@@ -322,7 +337,21 @@ impl StageRendering<'_> {
                 render_pass.draw(0..36, camera_id..camera_id + 1);
             }
         }
-        let sindex = self.stage.queue().submit(std::iter::once(encoder.finish()));
+        maybe_indirect_buffer
+    }
+
+    /// Run the stage rendering.
+    ///
+    /// Returns the queue submission index and the indirect draw buffer, if
+    /// available.
+    pub fn run(self) -> (wgpu::SubmissionIndex, Option<SlabBuffer<wgpu::Buffer>>) {
+        let stage = self.stage;
+        let label = Some("stage render");
+        let mut encoder = stage
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label });
+        let maybe_indirect_buffer = self.encode_into(&mut encoder);
+        let sindex = stage.queue().submit(std::iter::once(encoder.finish()));
         (sindex, maybe_indirect_buffer)
     }
 }
@@ -1226,7 +1255,7 @@ impl Stage {
             materials,
             draw_calls: Arc::new(RwLock::new(DrawCalls::new(
                 ctx,
-                ctx.get_use_direct_draw(),
+                stage_config.use_compute_culling,
                 &geometry_buffer,
                 &depth_texture,
             ))),
@@ -1618,8 +1647,31 @@ impl Stage {
         NestedTransform::new(self.geometry.slab_allocator())
     }
 
-    /// Render the staged scene into the given view.
-    pub fn render(&self, view: &wgpu::TextureView) {
+    /// Record a complete frame into a caller-owned encoder.
+    ///
+    /// The caller owns the eventual submission. This path refuses compute
+    /// culling until its preparatory compute work can join the same encoder.
+    pub fn encode_into(
+        &self,
+        view: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> Result<StageEncodeReport, StageEncodeError> {
+        let compute_culling = self
+            .draw_calls
+            .read()
+            .expect("draw_calls read")
+            .get_compute_culling_available();
+        if compute_culling {
+            return ComputeCullingOwnsSubmissionSnafu.fail();
+        }
+        Ok(self.encode_into_unchecked(view, encoder))
+    }
+
+    fn encode_into_unchecked(
+        &self,
+        view: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> StageEncodeReport {
         // UNWRAP: POP
         let background_color = *self.background_color.read().expect("background_color read");
         // UNWRAP: POP
@@ -1672,24 +1724,22 @@ impl Stage {
             .primitive_pipeline
             .read()
             .expect("primitive_pipeline read");
-        let (_submission_index, maybe_indirect_buffer) = StageRendering {
+        let maybe_indirect_buffer = StageRendering {
             pipeline: &pipeline_guard,
             stage: self,
             color_attachment: render_pass_color_attachment,
             depth_stencil_attachment: render_pass_depth_attachment,
         }
-        .run();
+        .encode_into(encoder);
+
+        let mut render_passes = 1;
+        let mut copy_commands = 0;
 
         // then render bloom
         if self.has_bloom.load(Ordering::Relaxed) {
-            self.bloom.bloom(self.device(), self.queue());
+            render_passes += self.bloom.encode_into(encoder);
         } else {
             // copy the input hdr texture to the bloom mix texture
-            let mut encoder =
-                self.device()
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("no bloom copy"),
-                    });
             let bloom_mix_texture = self.bloom.get_mix_texture();
             encoder.copy_texture_to_texture(
                 wgpu::TexelCopyTextureInfo {
@@ -1710,18 +1760,19 @@ impl Stage {
                     depth_or_array_layers: 1,
                 },
             );
-            self.queue().submit(std::iter::once(encoder.finish()));
+            copy_commands += 1;
         }
 
         // then render tonemapping
-        self.tonemapping.render(self.device(), self.queue(), view);
+        self.tonemapping.encode_into(encoder, view);
+        render_passes += 1;
 
         // then render the debug overlay
         if self.has_debug_overlay.load(Ordering::Relaxed) {
             if let Some(indirect_draw_buffer) = maybe_indirect_buffer {
-                self.debug_overlay.render(
+                self.debug_overlay.encode_into(
                     self.device(),
-                    self.queue(),
+                    encoder,
                     view,
                     &self
                         .stage_slab_buffer
@@ -1729,8 +1780,26 @@ impl Stage {
                         .expect("stage_slab_buffer read"),
                     &indirect_draw_buffer,
                 );
+                render_passes += 1;
             }
         }
+
+        StageEncodeReport {
+            render_passes,
+            copy_commands,
+            internal_queue_submissions: 0,
+        }
+    }
+
+    /// Render the staged scene into the given view.
+    pub fn render(&self, view: &wgpu::TextureView) {
+        let mut encoder = self
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("stage frame"),
+            });
+        let _ = self.encode_into_unchecked(view, &mut encoder);
+        self.queue().submit(std::iter::once(encoder.finish()));
     }
 }
 
