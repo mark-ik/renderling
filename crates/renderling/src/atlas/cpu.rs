@@ -1081,13 +1081,11 @@ impl AtlasBlitter {
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(
-                        if mag_filter == wgpu::FilterMode::Linear {
-                            wgpu::SamplerBindingType::Filtering
-                        } else {
-                            wgpu::SamplerBindingType::NonFiltering
-                        },
-                    ),
+                    ty: wgpu::BindingType::Sampler(if mag_filter == wgpu::FilterMode::Linear {
+                        wgpu::SamplerBindingType::Filtering
+                    } else {
+                        wgpu::SamplerBindingType::NonFiltering
+                    }),
                     count: None,
                 },
             ],
